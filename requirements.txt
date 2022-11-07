@@ -5,3 +5,4 @@ pandas
 sklearn
 scikit-learn
 matplotlib
+tensorflow-model-optimization
