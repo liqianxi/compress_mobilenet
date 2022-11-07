@@ -26,8 +26,8 @@ IMG_SIZE = (224, 224)
 IMG_SHAPE = IMG_SIZE + (3,)
 train_dir = "./nov7data/train"
 validation_dir = "./nov7data/val"
-
-cur_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/"
+cur_path = "/home/qianxi/scratch/code/"
+#cur_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/"
 timestamp = datetime.now()
 dt_string = timestamp.strftime("%Y%m%d")
 full_store_path = f'644model/{dt_string}_{trainset_identifier}train_{testval_set_identifier}valtest_pretrained_{initial_epochs}train_{fine_tune_epochs}finetune/'
