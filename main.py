@@ -26,8 +26,8 @@ IMG_SIZE = (224, 224)
 IMG_SHAPE = IMG_SIZE + (3,)
 train_dir = "./nov7data/train"
 validation_dir = "./nov7data/val"
-cur_path = "/home/qianxi/scratch/code/"
-#cur_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/"
+#cur_path = "/home/qianxi/scratch/code/"
+cur_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/"
 timestamp = datetime.now()
 dt_string = timestamp.strftime("%Y%m%d")
 full_store_path = f'644model/{dt_string}_{trainset_identifier}train_{testval_set_identifier}valtest_pretrained_{initial_epochs}train_{fine_tune_epochs}finetune/'
@@ -101,7 +101,37 @@ def compose_model(base_model):
     
     return model
 
-def prune_model(base_model):
+def load_model(base_model):
+    image_batch, label_batch = next(iter(train_dataset))
+    feature_batch = base_model(image_batch)
+    print(feature_batch.shape)
+    # Add a classification head.
+    global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
+    feature_batch_average = global_average_layer(feature_batch)
+    print(feature_batch_average.shape)
+
+    prediction_layer = tf.keras.layers.Dense(1)
+    prediction_batch = prediction_layer(feature_batch_average)
+    print(prediction_batch.shape)
+
+    inputs = tf.keras.Input(shape=(224, 224, 3))
+    x = data_augmentation(inputs)
+    x = preprocess_input(x)
+    x = base_model(x, training=False)
+    x = global_average_layer(x)
+    x = tf.keras.layers.Dropout(0.2)(x)
+    outputs = prediction_layer(x)
+    model = tf.keras.Model(inputs, outputs)
+    
+    
+    return model
+
+
+def prune_model(base_model,loaded_path):
+
+
+
+
     # Create the base model from the pre-trained model MobileNet V2.
     prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
     pruning_params = {
@@ -131,7 +161,7 @@ def prune_model(base_model):
     x = tf.keras.layers.Dropout(0.2)(x)
     outputs = prediction_layer(x)
     model = tf.keras.Model(inputs, outputs)
-    
+    model.load_weights(loaded_path)
     
     return model
 
@@ -189,6 +219,7 @@ def train_model_with_finetune(base_model, model,base_lr,initial_epochs, fine_tun
 base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
                                                 include_top=False,
                                                 weights='imagenet')
+                                  
 model = compose_model(base_model)
 
 acc, val_acc, loss, val_loss, model, history = train_model_with_finetune(base_model, model, base_lr, initial_epochs,fine_tune_epochs)
@@ -209,7 +240,8 @@ if not os.path.exists(full_path):
     os.makedirs(full_path)
 
 model.save(full_path)
-
+model2 = tf.keras.models.load_model(full_path)
+print(model2)
 
 with open(full_path+"hist.json","w") as obj:
     obj.write(json.dumps(history.history))
