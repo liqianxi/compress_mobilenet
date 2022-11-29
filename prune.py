@@ -8,18 +8,22 @@ from helpers import report_confusion_matrix, recall_m, precision_m, f1_m
 import ssl
 from keras import backend as K
 import numpy as np
-
+import tempfile
 import pandas as pd
 from sklearn.metrics import classification_report
 import os
 import matplotlib.pyplot as plt
 import tensorflow_model_optimization as tfmot
+from tensorflow_model_optimization.python.core.sparsity.keras import prunable_layer
+from tensorflow_model_optimization.python.core.sparsity.keras import prune_registry
+
 
 ssl._create_default_https_context = ssl._create_unverified_context
 trainset_identifier = 20000
 testval_set_identifier = 4000
 initial_epochs = 1
 fine_tune_epochs = 1
+epochs = 5
 base_lr = 1e-4
 BATCH_SIZE = 32
 IMG_SIZE = (224, 224)
@@ -35,6 +39,13 @@ full_path = cur_path + full_store_path
 #recall_m, precision_m, f1_m
 
 
+base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
+                                                alpha=0.35,
+                                                include_top=False,
+                                                weights='imagenet')
+base_model.summary()
+
+assert 1==2
 # Load train, test, validation set.
 train_dataset = tf.keras.utils.image_dataset_from_directory(train_dir,
                                                             shuffle=True,
@@ -71,90 +82,60 @@ data_augmentation = tf.keras.Sequential([
 
 # This model expects pixel values in [-1, 1].
 preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
-rescale = tf.keras.layers.Rescaling(1./127.5, offset=-1)
 
-
-
-def load_model(base_model,weight_path):
-    image_batch, label_batch = next(iter(train_dataset))
-    feature_batch = base_model(image_batch)
-    print(feature_batch.shape)
-    # Add a classification head.
-    global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
-    feature_batch_average = global_average_layer(feature_batch)
-    print(feature_batch_average.shape)
-
-    prediction_layer = tf.keras.layers.Dense(1)
-    prediction_batch = prediction_layer(feature_batch_average)
-    print(prediction_batch.shape)
-
-    inputs = tf.keras.Input(shape=(224, 224, 3))
-    x = data_augmentation(inputs)
-    x = preprocess_input(x)
-    x = base_model(x, training=False)
-    x = global_average_layer(x)
-    x = tf.keras.layers.Dropout(0.2)(x)
-    outputs = prediction_layer(x)
-    model = tf.keras.Model(inputs, outputs)
-    model.load_weights(weight_path)
-    
-    
-    return model
-
-
-def prune_model(base_model,loaded_path):
-
-
-
-
-    # Create the base model from the pre-trained model MobileNet V2.
-    prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
-    pruning_params = {
-      'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.50,
-                                                               final_sparsity=0.80,
-                                                               begin_step=0,
-                                                               end_step=train_batches)
+pruning_params = {
+    'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.50,
+                                                            final_sparsity=0.80,
+                                                            begin_step=0,
+                                                            end_step=train_batches*initial_epochs)
 }
-    base_model.trainable = False
-    image_batch, label_batch = next(iter(train_dataset))
-    feature_batch = base_model(image_batch)
-    print(feature_batch.shape)
-    # Add a classification head.
-    global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
-    feature_batch_average = global_average_layer(feature_batch)
-    print(feature_batch_average.shape)
 
-    prediction_layer = tf.keras.layers.Dense(1)
-    prediction_batch = prediction_layer(feature_batch_average)
-    print(prediction_batch.shape)
+def apply_pruning_to_prunable_layers(layer):
+    if isinstance(layer, prunable_layer.PrunableLayer) or hasattr(layer, 'get_prunable_weights') or prune_registry.PruneRegistry.supports(layer):
+        return tfmot.sparsity.keras.prune_low_magnitude(layer,**pruning_params)
+    print("Not Prunable: ", layer)
+    return layer
 
-    inputs = tf.keras.Input(shape=(224, 224, 3))
-    x = data_augmentation(inputs)
-    x = preprocess_input(x)
-    x = base_model(x, training=False)
-    x = global_average_layer(x)
-    x = tf.keras.layers.Dropout(0.2)(x)
-    outputs = prediction_layer(x)
-    model = tf.keras.Model(inputs, outputs)
-    model.load_weights(loaded_path)
+
+def prune_model(model):
+
+    
+    model_for_pruning = tf.keras.models.clone_model(
+        model,
+        clone_function=apply_pruning_to_prunable_layers,
+    )
+    model_for_pruning.summary()
+
+
+
+
     
     return model
 
 
-def train(base_model, model,base_lr, epochs):
+def train(model,base_lr, epochs):
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_lr),
               loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
               metrics=['accuracy',f1_m,precision_m, recall_m])
     print(model.summary())
-    earlystop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, mode='min',patience=3)
+    #earlystop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, mode='min',patience=3)
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=full_path+"cp.ckpt",
                                                  save_weights_only=True,
                                                  verbose=1)
+    log_dir = tempfile.mkdtemp()
+    callbacks = [
+        tfmot.sparsity.keras.UpdatePruningStep(),
+        # Log sparsity and other metrics in Tensorboard.
+        tfmot.sparsity.keras.PruningSummaries(log_dir=log_dir),
+        cp_callback
+        #earlystop
+    ]
+
 
     history = model.fit(train_dataset,
                     epochs=initial_epochs,
-                    validation_data=validation_dataset,callbacks=[earlystop,cp_callback] )
+                    validation_data=validation_dataset,callbacks=callbacks )
 
     acc = history.history['accuracy']
     val_acc = history.history['val_accuracy']
@@ -220,17 +201,21 @@ def train_model_with_finetune(base_model, model,base_lr,initial_epochs, fine_tun
     return acc, val_acc, loss, val_loss, model, history_fine
 
 
-base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
-                                                include_top=False,
-                                                weights='imagenet')
+
+from keras.utils.vis_utils import plot_model
+plot_model(base_model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
+
+assert 1==2
 prune = 1
 if prune:
     #model = load_model(base_model,"./baseline/saved_model.pb")
     #acc, val_acc, loss, val_loss, model, history = train(base_model, model, base_lr, initial_epochs)
-    model2 = tf.keras.models.load_model("./baseline/",custom_objects={"f1_m":f1_m,"precision_m":precision_m,"recall_m":recall_m}, compile=True)
-
-    loss, accuracy, f1, precision, recall = make_prediction(model2)
-    print(loss, accuracy, f1, precision, recall)
+    model2 = tf.keras.models.load_model("./baseline2/",custom_objects={"f1_m":f1_m,"precision_m":precision_m,"recall_m":recall_m}, compile=True)
+    model2.summary()
+    #loss, accuracy, f1, precision, recall = make_prediction(model2)
+    #print(loss, accuracy, f1, precision, recall)
+    model = prune_model(model2)
+    acc, val_acc, loss, val_loss, model, history = train(model,base_lr, epochs)
 
 
 
