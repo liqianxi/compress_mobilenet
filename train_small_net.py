@@ -8,7 +8,7 @@ from helpers import report_confusion_matrix, recall_m, precision_m, f1_m
 import ssl
 from keras import backend as K
 import numpy as np
-
+from mobilenet_trimmed import MobileNetV2 
 import pandas as pd
 from sklearn.metrics import classification_report
 import os
@@ -20,11 +20,11 @@ from tensorflow.keras import datasets, layers, models
 ssl._create_default_https_context = ssl._create_unverified_context
 trainset_identifier = 20000
 testval_set_identifier = 4000
-initial_epochs = 1
+initial_epochs = 100
 
 base_lr = 1e-4
 BATCH_SIZE = 32
-IMG_SIZE = (224, 224)
+IMG_SIZE = (96, 96)
 IMG_SHAPE = IMG_SIZE + (3,)
 train_dir = "./real_nov7/split_train"
 validation_dir = "./real_nov7/split_val"
@@ -67,7 +67,7 @@ preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
 
 def compose_base_model():
     model = models.Sequential()
-    model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=(224, 224, 3)))
+    model.add(layers.Conv2D(32, (3, 3), activation='relu', input_shape=IMG_SHAPE))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(layers.MaxPooling2D((2, 2)))
@@ -77,7 +77,7 @@ def compose_base_model():
 def compose_model(base_model):
     # Create the base model from the pre-trained model MobileNet V2.
     
-    base_model.trainable = False
+    #base_model.trainable = False
     image_batch, label_batch = next(iter(train_dataset))
     feature_batch = base_model(image_batch)
     print(feature_batch.shape)
@@ -90,10 +90,10 @@ def compose_model(base_model):
     prediction_batch = prediction_layer(feature_batch_average)
     print(prediction_batch.shape)
 
-    inputs = tf.keras.Input(shape=(224, 224, 3))
+    inputs = tf.keras.Input(shape=IMG_SHAPE)
     
-    #x = preprocess_input(inputs)
-    x = base_model(inputs)
+    x = preprocess_input(inputs)
+    x = base_model(x)
     x = global_average_layer(x)
     x = tf.keras.layers.Dropout(0.2)(x)
     outputs = prediction_layer(x)
@@ -125,7 +125,10 @@ def train_model(model, base_lr,initial_epochs):
     return acc, val_acc, loss, val_loss, model, history
 
 
-base_model = compose_base_model()
+#base_model = compose_base_model()
+base_model = MobileNetV2(input_shape=IMG_SHAPE,
+                                               include_top=False,
+                                               alpha=0.35,weights=None)
 composed_full_model = compose_model(base_model)
 
 acc, val_acc, loss, val_loss, model, history = train_model( composed_full_model, base_lr, initial_epochs)
