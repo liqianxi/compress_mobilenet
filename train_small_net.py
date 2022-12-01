@@ -26,8 +26,8 @@ base_lr = 1e-4
 BATCH_SIZE = 32
 IMG_SIZE = (96, 96)
 IMG_SHAPE = IMG_SIZE + (3,)
-train_dir = "./real_nov7/split_train"
-validation_dir = "./real_nov7/split_val"
+train_dir = "./split_data/train/split_train"
+validation_dir = "./split_data/train/split_val"
 #cur_path = "/home/qianxi/scratch/code/"
 cur_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/"
 timestamp = datetime.now()
@@ -71,7 +71,7 @@ def compose_base_model():
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(layers.MaxPooling2D((2, 2)))
-    model.add(layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(layers.Conv2D(128, (3, 3), activation='relu'))
     return model
 
 def compose_model(base_model):
@@ -107,7 +107,7 @@ def train_model(model, base_lr,initial_epochs):
               loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
               metrics=['accuracy',f1_m,precision_m, recall_m])
     print(model.summary())
-    earlystop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, mode='min',patience=3)
+    earlystop = tf.keras.callbacks.EarlyStopping(monitor='loss', verbose=1, mode='min',patience=5)
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=full_path+"cp.ckpt",
                                                  save_weights_only=True,
@@ -125,10 +125,11 @@ def train_model(model, base_lr,initial_epochs):
     return acc, val_acc, loss, val_loss, model, history
 
 
-#base_model = compose_base_model()
+base_model = compose_base_model()
+'''
 base_model = MobileNetV2(input_shape=IMG_SHAPE,
                                                include_top=False,
-                                               alpha=0.35,weights=None)
+                                               alpha=0.35,weights=None)'''
 composed_full_model = compose_model(base_model)
 
 acc, val_acc, loss, val_loss, model, history = train_model( composed_full_model, base_lr, initial_epochs)

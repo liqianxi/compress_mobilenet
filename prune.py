@@ -6,6 +6,8 @@ import json
 from datetime import datetime
 from helpers import report_confusion_matrix, recall_m, precision_m, f1_m
 import ssl
+import os
+import zipfile
 from keras import backend as K
 import numpy as np
 import tempfile
@@ -26,7 +28,7 @@ fine_tune_epochs = 1
 epochs = 5
 base_lr = 1e-4
 BATCH_SIZE = 32
-IMG_SIZE = (224, 224)
+IMG_SIZE = (224,224)
 IMG_SHAPE = IMG_SIZE + (3,)
 train_dir = "./real_nov7/split_train"
 validation_dir = "./real_nov7/split_val"
@@ -34,18 +36,18 @@ validation_dir = "./real_nov7/split_val"
 cur_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/"
 timestamp = datetime.now()
 dt_string = timestamp.strftime("%Y%m%d")
-full_store_path = f'644model/{dt_string}_{trainset_identifier}train_{testval_set_identifier}valtest_pretrained_{initial_epochs}train_{fine_tune_epochs}finetune/'
+full_store_path = f'644model/prune/{dt_string}_{trainset_identifier}train_{testval_set_identifier}valtest_pretrained_{initial_epochs}train_{fine_tune_epochs}finetune/'
 full_path = cur_path + full_store_path
 #recall_m, precision_m, f1_m
 
 
-base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
-                                                alpha=0.35,
-                                                include_top=False,
-                                                weights='imagenet')
-base_model.summary()
+# base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
+#                                                 alpha=0.35,
+#                                                 include_top=False,
+#                                                 weights='imagenet')
+# base_model.summary()
 
-assert 1==2
+
 # Load train, test, validation set.
 train_dataset = tf.keras.utils.image_dataset_from_directory(train_dir,
                                                             shuffle=True,
@@ -203,50 +205,57 @@ def train_model_with_finetune(base_model, model,base_lr,initial_epochs, fine_tun
 
 
 from keras.utils.vis_utils import plot_model
-plot_model(base_model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
+#plot_model(base_model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
 
-assert 1==2
+def representative_dataset():
+    for image, _ in train_dataset.take(50):
+        #plt.figure(figsize=(5, 5))
+        #plt.imshow(image[0] / 255)
+        #plt.axis('off')
+        yield([image])
+
+#assert 1==2
 prune = 1
 if prune:
     #model = load_model(base_model,"./baseline/saved_model.pb")
     #acc, val_acc, loss, val_loss, model, history = train(base_model, model, base_lr, initial_epochs)
-    model2 = tf.keras.models.load_model("./baseline2/",custom_objects={"f1_m":f1_m,"precision_m":precision_m,"recall_m":recall_m}, compile=True)
+    model2 = tf.keras.models.load_model("/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/output/",custom_objects={"f1_m":f1_m,"precision_m":precision_m,"recall_m":recall_m}, compile=True)
     model2.summary()
     #loss, accuracy, f1, precision, recall = make_prediction(model2)
     #print(loss, accuracy, f1, precision, recall)
-    model = prune_model(model2)
-    acc, val_acc, loss, val_loss, model, history = train(model,base_lr, epochs)
 
 
+    #acc, val_acc, loss, val_loss, model, history = train(model,base_lr, epochs)
+    import tempfile
+    import os
 
-else:                                          
-    model = compose_model(base_model)
-
-    acc, val_acc, loss, val_loss, model, history = train_model_with_finetune(base_model, model, base_lr, initial_epochs,fine_tune_epochs)
-
-    # Evaluate the model using testset.
-    loss, accuracy, f1, precision, recall = model.evaluate(test_dataset)
-    print('Test accuracy :', accuracy)
-
-    report = report_confusion_matrix(model, test_dataset)
-    print(report)
+    def get_gzipped_model_size(model):
+        # Returns size of gzipped model, in bytes.
 
 
+        _, keras_file = tempfile.mkstemp('.h5')
+        model.save(keras_file, include_optimizer=False)
 
-    print(full_path)
+        _, zipped_file = tempfile.mkstemp('.zip')
+        with zipfile.ZipFile(zipped_file, 'w', compression=zipfile.ZIP_DEFLATED) as f:
+            f.write(keras_file)
 
+        return os.path.getsize(zipped_file)
+    print("Size of gzipped pruned model without stripping: %.2f bytes" % (get_gzipped_model_size(model2)))
+    converter = tf.lite.TFLiteConverter.from_keras_model(model2) 
 
-    if not os.path.exists(full_path):
-        os.makedirs(full_path)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    # Enforce integer only quantization
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.inference_input_type = tf.int8
+    converter.inference_output_type = tf.int8
+    converter.representative_dataset = representative_dataset
+    model_tflite = converter.convert()
+    #print("Size of gzipped quantization model: %.2f bytes" % (get_gzipped_model_size(model_tflite)))
 
-    model.save(full_path)
+    with open('/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/nov29_mobilenet_quantization.tflite', 'wb') as f:
+        f.write(model_tflite)
+    
 
-
-    with open(full_path+"hist.json","w") as obj:
-        obj.write(json.dumps(history.history))
-
-
-    with open(full_path+"report.txt","w") as obj:
-        obj.write(str(report))
 
 
