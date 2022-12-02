@@ -2,7 +2,7 @@ import tensorflow as tf
 import keras
 import shutil
 import json
-
+from keras.utils.vis_utils import plot_model
 from datetime import datetime
 from helpers import report_confusion_matrix, recall_m, precision_m, f1_m
 import ssl
@@ -15,10 +15,21 @@ import pandas as pd
 from sklearn.metrics import classification_report
 import os
 import matplotlib.pyplot as plt
-import tensorflow_model_optimization as tfmot
-from tensorflow_model_optimization.python.core.sparsity.keras import prunable_layer
-from tensorflow_model_optimization.python.core.sparsity.keras import prune_registry
+#import tensorflow_model_optimization as tfmot
+#from tensorflow_model_optimization.python.core.sparsity.keras import prunable_layer
+#from tensorflow_model_optimization.python.core.sparsity.keras import prune_registry
+import tempfile
 
+
+def get_gzipped_model_size(model):
+    # Returns size of gzipped model, in bytes.
+
+
+    _, zipped_file = tempfile.mkstemp('.zip')
+    with zipfile.ZipFile(zipped_file, 'w', compression=zipfile.ZIP_DEFLATED) as f:
+        f.write(model)
+
+    return os.path.getsize(zipped_file)
 
 ssl._create_default_https_context = ssl._create_unverified_context
 trainset_identifier = 20000
@@ -28,64 +39,21 @@ fine_tune_epochs = 1
 epochs = 5
 base_lr = 1e-4
 BATCH_SIZE = 32
-IMG_SIZE = (224,224)
-IMG_SHAPE = IMG_SIZE + (3,)
+
 train_dir = "./real_nov7/split_train"
-validation_dir = "./real_nov7/split_val"
-#cur_path = "/home/qianxi/scratch/code/"
+
 cur_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/"
-timestamp = datetime.now()
-dt_string = timestamp.strftime("%Y%m%d")
-full_store_path = f'644model/prune/{dt_string}_{trainset_identifier}train_{testval_set_identifier}valtest_pretrained_{initial_epochs}train_{fine_tune_epochs}finetune/'
-full_path = cur_path + full_store_path
-#recall_m, precision_m, f1_m
 
 
-# base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
-#                                                 alpha=0.35,
-#                                                 include_top=False,
-#                                                 weights='imagenet')
-# base_model.summary()
 
 
-# Load train, test, validation set.
-train_dataset = tf.keras.utils.image_dataset_from_directory(train_dir,
-                                                            shuffle=True,
-                                                            label_mode="int",
-                                                            batch_size=BATCH_SIZE,
-                                                            image_size=IMG_SIZE)
 
-train_batches = tf.data.experimental.cardinality(train_dataset)
-validation_dataset = tf.keras.utils.image_dataset_from_directory(validation_dir,
-                                                                 shuffle=True,
-                                                                 label_mode="int",
-                                                                 batch_size=BATCH_SIZE,
-                                                                 image_size=IMG_SIZE)
 
-val_batches = tf.data.experimental.cardinality(validation_dataset)
-test_dataset = validation_dataset.take(val_batches // 5)
 
-validation_dataset = validation_dataset.skip(val_batches // 5)
 
-AUTOTUNE = tf.data.AUTOTUNE
 
-# Use buffered prefetching to load images from disk without having I/O become blocking.
-train_dataset = train_dataset.prefetch(buffer_size=AUTOTUNE)
 
-validation_dataset = validation_dataset.prefetch(buffer_size=AUTOTUNE)
-test_dataset = test_dataset.prefetch(buffer_size=AUTOTUNE)
-
-# Introduce sample diversity by applying random, yet realistic, transformations 
-# to the training images, such as rotation and horizontal flipping.
-data_augmentation = tf.keras.Sequential([
-  tf.keras.layers.RandomFlip('horizontal'),
-  tf.keras.layers.RandomRotation(0.2),
-])
-
-# This model expects pixel values in [-1, 1].
-preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
-
-pruning_params = {
+"""pruning_params = {
     'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.50,
                                                             final_sparsity=0.80,
                                                             begin_step=0,
@@ -113,149 +81,69 @@ def prune_model(model):
 
     
     return model
+"""
 
-
-def train(model,base_lr, epochs):
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_lr),
-              loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-              metrics=['accuracy',f1_m,precision_m, recall_m])
-    print(model.summary())
-    #earlystop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, mode='min',patience=3)
-    # Create a callback that saves the model's weights
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=full_path+"cp.ckpt",
-                                                 save_weights_only=True,
-                                                 verbose=1)
-    log_dir = tempfile.mkdtemp()
-    callbacks = [
-        tfmot.sparsity.keras.UpdatePruningStep(),
-        # Log sparsity and other metrics in Tensorboard.
-        tfmot.sparsity.keras.PruningSummaries(log_dir=log_dir),
-        cp_callback
-        #earlystop
-    ]
-
-
-    history = model.fit(train_dataset,
-                    epochs=initial_epochs,
-                    validation_data=validation_dataset,callbacks=callbacks )
-
-    acc = history.history['accuracy']
-    val_acc = history.history['val_accuracy']
-
-    loss = history.history['loss']
-    val_loss = history.history['val_loss']
-
-    return acc, val_acc, loss, val_loss, model, history
-
-def make_prediction(model):
-    loss, accuracy, f1, precision, recall = model.evaluate(test_dataset)
-    return loss, accuracy, f1, precision, recall
-
-
-def train_model_with_finetune(base_model, model,base_lr,initial_epochs, fine_tune_epochs):
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_lr),
-              loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-              metrics=['accuracy',f1_m,precision_m, recall_m])
-    print(model.summary())
-    earlystop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', verbose=1, mode='min',patience=3)
-    # Create a callback that saves the model's weights
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=full_path+"cp.ckpt",
-                                                 save_weights_only=True,
-                                                 verbose=1)
-
-    history = model.fit(train_dataset,
-                    epochs=initial_epochs,
-                    validation_data=validation_dataset,callbacks=[earlystop,cp_callback] )
-
-    acc = history.history['accuracy']
-    val_acc = history.history['val_accuracy']
-
-    loss = history.history['loss']
-    val_loss = history.history['val_loss']
-
-    base_model.trainable = True
-    fine_tune_at = 100
-
-    # Freeze all the layers before the `fine_tune_at` layer
-    for layer in base_model.layers[:fine_tune_at]:
-        layer.trainable = False
-
-    model.compile(loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
-              optimizer = tf.keras.optimizers.RMSprop(learning_rate=base_lr/10),
-              metrics=['accuracy',f1_m,precision_m, recall_m])
-
-    print(model.summary())
-
-
-    total_epochs =  initial_epochs + fine_tune_epochs
-
-    history_fine = model.fit(train_dataset,
-                            epochs=total_epochs,
-                            initial_epoch=history.epoch[-1],
-                            validation_data=validation_dataset,callbacks=[earlystop])
-    
-    acc += history_fine.history['accuracy']
-    val_acc += history_fine.history['val_accuracy']
-
-    loss += history_fine.history['loss']
-    val_loss += history_fine.history['val_loss']
-
-    return acc, val_acc, loss, val_loss, model, history_fine
-
-
-
-from keras.utils.vis_utils import plot_model
-#plot_model(base_model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
 
 def representative_dataset():
     for image, _ in train_dataset.take(50):
-        #plt.figure(figsize=(5, 5))
-        #plt.imshow(image[0] / 255)
-        #plt.axis('off')
+
         yield([image])
 
-#assert 1==2
-prune = 1
-if prune:
-    #model = load_model(base_model,"./baseline/saved_model.pb")
-    #acc, val_acc, loss, val_loss, model, history = train(base_model, model, base_lr, initial_epochs)
-    model2 = tf.keras.models.load_model("/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/output/",custom_objects={"f1_m":f1_m,"precision_m":precision_m,"recall_m":recall_m}, compile=True)
-    model2.summary()
-    #loss, accuracy, f1, precision, recall = make_prediction(model2)
-    #print(loss, accuracy, f1, precision, recall)
+root_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/644model/mobilenet"
+for model_folder in os.listdir(root_path):
+    if model_folder != ".DS_Store":
+        full_path = root_path +'/'+model_folder
+        if "96img" in model_folder:
+            img_size = 96
+        elif "224img" in model_folder:
+            img_size = 224
+        elif "160img" in model_folder:
+            img_size = 160
+
+        IMG_SIZE = (img_size,img_size)
+        IMG_SHAPE = IMG_SIZE + (3,)
+        # Load train, test, validation set.
+        train_dataset = tf.keras.utils.image_dataset_from_directory(train_dir,
+                                                                    shuffle=True,
+                                                                    label_mode="int",
+                                                                    batch_size=BATCH_SIZE,
+                                                                    image_size=IMG_SIZE)
 
 
-    #acc, val_acc, loss, val_loss, model, history = train(model,base_lr, epochs)
-    import tempfile
-    import os
+        AUTOTUNE = tf.data.AUTOTUNE
 
-    def get_gzipped_model_size(model):
-        # Returns size of gzipped model, in bytes.
+        # Use buffered prefetching to load images from disk without having I/O become blocking.
+        train_dataset = train_dataset.prefetch(buffer_size=AUTOTUNE)
 
+        print("current processing",model_folder)
+        model2 = tf.keras.models.load_model(full_path,custom_objects={"f1_m":f1_m,"precision_m":precision_m,"recall_m":recall_m}, compile=True)
 
-        _, keras_file = tempfile.mkstemp('.h5')
-        model.save(keras_file, include_optimizer=False)
+        converter = tf.lite.TFLiteConverter.from_keras_model(model2) 
+        #converter.optimizations = [tf.lite.Optimize.DEFAULT]
+        model_tflite_no_quant = converter.convert()
+        
+        lite_path = full_path+'/mobilenet_no_quant.tflite'
+        with open(lite_path, 'wb') as f:
+            f.write(model_tflite_no_quant)
+        #print("Size of gzipped quantization model: %.2f bytes" % (get_gzipped_model_size(model_tflite_no_quant)))
+        os.system(f"xxd -i {lite_path} > {full_path}/mobilenet_no_quant_model.cc")
 
-        _, zipped_file = tempfile.mkstemp('.zip')
-        with zipfile.ZipFile(zipped_file, 'w', compression=zipfile.ZIP_DEFLATED) as f:
-            f.write(keras_file)
-
-        return os.path.getsize(zipped_file)
-    print("Size of gzipped pruned model without stripping: %.2f bytes" % (get_gzipped_model_size(model2)))
-    converter = tf.lite.TFLiteConverter.from_keras_model(model2) 
-
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    # Enforce integer only quantization
-    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
-    converter.inference_input_type = tf.int8
-    converter.inference_output_type = tf.int8
-    converter.representative_dataset = representative_dataset
-    model_tflite = converter.convert()
-    #print("Size of gzipped quantization model: %.2f bytes" % (get_gzipped_model_size(model_tflite)))
-
-    with open('/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/nov29_mobilenet_quantization.tflite', 'wb') as f:
-        f.write(model_tflite)
-    
+        converter = tf.lite.TFLiteConverter.from_keras_model(model2) 
+        converter.optimizations = [tf.lite.Optimize.DEFAULT]
+        # Enforce integer only quantization
+        converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+        converter.inference_input_type = tf.int8
+        converter.inference_output_type = tf.int8
+        converter.representative_dataset = representative_dataset
+        model_tflite = converter.convert()
+        #print("Size of gzipped quantization model: %.2f bytes" % (get_gzipped_model_size(model_tflite)))
+        
+        lite_path = full_path+'/mobilenet_quantization.tflite'
+        with open(lite_path, 'wb') as f:
+            f.write(model_tflite)
+        #assert 1==2
+        os.system(f"xxd -i {lite_path} > {full_path}/quantization_model.cc")
+            
 
 
 
