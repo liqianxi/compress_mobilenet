@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import csv
 
 flash_size = 1024
-ram_size = 256
+
 
 fig_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/figures/"
 width_multiplier_list = [0.35,0.5,0.75,1.0]
@@ -38,5 +38,8 @@ def draw_size_plot_mobilenet():
     plt.ylabel("Model Size in kb")
 
     plt.savefig(fig_path+"first.png") 
+
+
+
 
 draw_size_plot_mobilenet()
