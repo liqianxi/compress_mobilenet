@@ -89,9 +89,9 @@ def representative_dataset():
 
         yield([image])
 
-root_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/644model/mobilenet"
+root_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/644model/smallcnn"
 for model_folder in os.listdir(root_path):
-    if model_folder != ".DS_Store":
+    if model_folder != ".DS_Store" and ".json" not in model_folder:
         full_path = root_path +'/'+model_folder
         if "96img" in model_folder:
             img_size = 96
@@ -122,11 +122,11 @@ for model_folder in os.listdir(root_path):
         #converter.optimizations = [tf.lite.Optimize.DEFAULT]
         model_tflite_no_quant = converter.convert()
         
-        lite_path = full_path+'/mobilenet_no_quant.tflite'
+        lite_path = full_path+'/smallcnn_no_quant.tflite'
         with open(lite_path, 'wb') as f:
             f.write(model_tflite_no_quant)
         #print("Size of gzipped quantization model: %.2f bytes" % (get_gzipped_model_size(model_tflite_no_quant)))
-        os.system(f"xxd -i {lite_path} > {full_path}/mobilenet_no_quant_model.cc")
+        os.system(f"xxd -i {lite_path} > {full_path}/smallcnn_no_quant_model.cc")
 
         converter = tf.lite.TFLiteConverter.from_keras_model(model2) 
         converter.optimizations = [tf.lite.Optimize.DEFAULT]
@@ -138,7 +138,7 @@ for model_folder in os.listdir(root_path):
         model_tflite = converter.convert()
         #print("Size of gzipped quantization model: %.2f bytes" % (get_gzipped_model_size(model_tflite)))
         
-        lite_path = full_path+'/mobilenet_quantization.tflite'
+        lite_path = full_path+'/smallcnn_quantization.tflite'
         with open(lite_path, 'wb') as f:
             f.write(model_tflite)
         #assert 1==2

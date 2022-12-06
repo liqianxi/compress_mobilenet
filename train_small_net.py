@@ -72,6 +72,7 @@ def compose_base_model():
     model.add(layers.Conv2D(64, (3, 3), activation='relu'))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Conv2D(128, (3, 3), activation='relu'))
+    print(model.summary())
     return model
 
 def compose_model(base_model):
@@ -107,6 +108,7 @@ def train_model(model, base_lr,initial_epochs):
               loss=tf.keras.losses.BinaryCrossentropy(from_logits=True),
               metrics=['accuracy',f1_m,precision_m, recall_m])
     print(model.summary())
+    assert 1==2
     earlystop = tf.keras.callbacks.EarlyStopping(monitor='loss', verbose=1, mode='min',patience=5)
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=full_path+"cp.ckpt",

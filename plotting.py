@@ -1,7 +1,7 @@
 import seaborn as sns
 import matplotlib.pyplot as plt
 import csv
-import numpy as np
+import numpy as np, math
 import json,re
 from matplotlib.pyplot import figure
 
@@ -47,9 +47,9 @@ def draw_size_plot_mobilenet():
 def draw_size_plot_cnn():
     plt.grid()
     pair_list = []
-    scale_list = [2,3]
-    model_size_before = [525, 1740.8]
-    model_size_after = [143, 446]
+    scale_list = [1,2,3]
+    model_size_before = [229, 525, 1741]
+    model_size_after = [64, 143, 446]
 
     for i in range(len(scale_list)):
         pair_list.append((scale_list[i],model_size_before[i]))
@@ -121,7 +121,7 @@ def draw_latency_plot():
             new_x_list.append(new_str)
         #x_data = [f"{[0]}, {find_components(i, 'cnn')[1]}" for i in models]
         
-        plt.scatter( x=new_x_list, y=latency_list)
+        plt.plot( new_x_list, latency_list)
 
     plt.xlabel("Input size, scale")
     plt.ylabel("Latency in millisecond(s)")
@@ -165,8 +165,8 @@ def draw_latency_plot():
             new_str = f"{pair[0]}, {pair[1]}"
             new_x_list.append(new_str)
         #x_data = [f"{[0]}, {find_components(i, 'cnn')[1]}" for i in models]
-        
-        plt.scatter( x=new_x_list, y=latency_list)
+        plt.plot( new_x_list, latency_list)
+        #plt.scatter( x=new_x_list, y=latency_list,s=12**2)
     plt.legend(labels=[i for i in batch_sizes], loc='upper left')
     plt.xlabel("Input size, width multiplier",labelpad=7)
     plt.ylabel("Latency in millisecond(s)")
@@ -174,7 +174,178 @@ def draw_latency_plot():
     
     plt.xticks(rotation = 45)
     plt.savefig(fig_path+"second-2.png")
-            
+
+
+
+def draw_accuracy_plot_mobilenet():
+    json_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/644model/mobilenet/inference_result.json"
+
+    with open(json_path) as obj:
+        content = json.loads(obj.read())
+
+    size_list = [96,160,224]
+    width_list = [0.35,0.5,0.75,1.0]
+
+    data_list = [{96:[0.86,0.86,0.88,0.88],160:[0.89,0.89,0.91,0.92],224:[0.91,0.92,0.93,0.93]},
+                 {96:[0.851,0.855,0.879, 0.875],160:[0.891,0.89,0.908,0.907],224:[0.892,0.912, 0.92,0.921]}]
+    plt.rc('axes', axisbelow=True)
+    plt.grid()
+    color_dict = {0.35:'r',0.5:"g",0.75:"y",1.0:"k"}
+    legend_list = []
+    for i, turn in enumerate(data_list):
+        temp_str = "Before quantization, width multiplier="
+        if i==1:
+            line_type = '--'
+            temp_str = "After quantization, width multiplier="
+        else:
+            line_type = "-"
+        for width in range(len(width_list)):
+            legend_list.append(temp_str+str(width_list[width]))
+            x_data = [str(j) for j in size_list]
+            y_data = [turn[size][width] for size in turn.keys()]
+            #print(x_data,y_data)
+            plt.plot( x_data, y_data,color=color_dict[width_list[width]],linestyle=line_type)
+        #plt.scatter( x=x_label_list, y=accuracy_after)
+
+    plt.ylim((0.84,0.97))
+
+    #plt.axhline(flash_size,color="red",label="Storage Constraint")
+    plt.legend(legend_list, loc='upper left')
+    plt.title("(Figure 3.1) MobileNet V2 accuracy with different width multipliers")
+    plt.xlabel("Image Size")
+    plt.ylabel("Model accuracy")
+    plt.xticks(rotation = 45)
+    plt.savefig(fig_path+"third-1.png") 
+
+    plt.clf()
+
+def draw_accuracy_plot_cnn():
+    json_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/644model/smallcnn/inference_result.json"
+
+    with open(json_path) as obj:
+        content = json.loads(obj.read())
+
+    size_list = [96,160,224]
+    width_list = [1,2,3]
+
+    data_list = [{96:[0.61, 0.62, 0.62],160:[0.63, 0.59, 0.65],224:[0.61, 0.62, 0.61]},
+                 {96:[0.61, 0.635, 0.593],160:[0.591, 0.627, 0.643],224:[0.621, 0.611, 0.607]}]
+    plt.rc('axes', axisbelow=True)
+    plt.grid()
+    color_dict = {1:'r',2:"g",3:"y"}
+    legend_list = []
+    for i, turn in enumerate(data_list):
+        temp_str = "Before quantization, scale="
+        if i==1:
+            line_type = '--'
+            temp_str = "After quantization, scale="
+        else:
+            line_type = "-"
+        for width in range(len(width_list)):
+            legend_list.append(temp_str+str(width_list[width]))
+            x_data = [str(j) for j in size_list]
+            y_data = [turn[size][width] for size in turn.keys()]
+            #print(x_data,y_data)
+            plt.plot( x_data, y_data,color=color_dict[width_list[width]],linestyle=line_type)
+        #plt.scatter( x=x_label_list, y=accuracy_after)
+
+    plt.ylim((0.55,0.7))
+
+    #plt.axhline(flash_size,color="red",label="Storage Constraint")
+    plt.legend(legend_list, loc='upper left')
+    plt.title("(Figure 3.2) CNN accuracy with different scales")
+    plt.xlabel("Image Size")
+    plt.ylabel("Model accuracy")
+    plt.xticks(rotation = 45)
+    plt.savefig(fig_path+"third-2.png") 
+
+    plt.clf()
+
+def draw_latency_plot_cnn():
+
+
+    size_list = [96,160,224]
+    width_list = [1,2,3]
+
+    data_list = [{96:[5.7,2.51,2.59],160:[7.38,11.39,12.68],224:[23.46, 22.36, 23]},
+                 {96:[207.93,178.95,184.31],160:[500.09, 609, 791],224:[1185.48, 1352.83, 1510.53]}]
+    plt.rc('axes', axisbelow=True)
+    plt.grid()
+    color_dict = {1:'r',2:"g",3:"y"}
+    legend_list = []
+    for i, turn in enumerate(data_list):
+        temp_str = "Before quantization, scale="
+        if i==1:
+            line_type = '--'
+            temp_str = "After quantization, scale="
+        else:
+            line_type = "-"
+        for width in range(len(width_list)):
+            legend_list.append(temp_str+str(width_list[width]))
+            x_data = [str(j) for j in size_list]
+            y_data = np.log([turn[size][width] for size in turn.keys()])
+            #print(x_data,y_data)
+            plt.plot( x_data, y_data,color=color_dict[width_list[width]],linestyle=line_type)
+        #plt.scatter( x=x_label_list, y=accuracy_after)
+
+    #plt.ylim((0.55,0.7))
+
+    #plt.axhline(flash_size,color="red",label="Storage Constraint")
+    plt.legend(legend_list, loc='upper left')
+    plt.title("(Figure 3.4) CNN log-latency with different scales")
+    plt.xlabel("Image Size")
+    plt.ylabel("Model log(latency)")
+    plt.xticks(rotation = 45)
+    plt.savefig(fig_path+"third-4.png") 
+
+    plt.clf()
+
+def draw_latency_plot_mobilenet():
+    json_path = "/Users/qianxi/Desktop/Leon/2022-2024/2022fall/644/project/code/644model/mobilenet/inference_result.json"
+
+    with open(json_path) as obj:
+        content = json.loads(obj.read())
+
+    size_list = [96,160,224]
+    width_list = [0.35,0.5,0.75,1.0]
+
+    data_list = [{96:[1.67,2.18, 3.26, 3.93],160:[3.74, 4.55, 6.98, 8.61],224:[6.23,8.55,15.8, 18.22]},
+                 {96:[33.67, 53.07, 110.66, 163.64],160:[90.27, 140.48, 297.13, 424.16],224:[170.9, 276.27, 588.39, 842.72]}]
+    plt.rc('axes', axisbelow=True)
+    plt.grid()
+    color_dict = {0.35:'r',0.5:"g",0.75:"y",1.0:"k"}
+    legend_list = []
+    for i, turn in enumerate(data_list):
+        temp_str = "Before quantization, width multiplier="
+        if i==1:
+            line_type = '--'
+            temp_str = "After quantization, width multiplier="
+        else:
+            line_type = "-"
+        for width in range(len(width_list)):
+            legend_list.append(temp_str+str(width_list[width]))
+            x_data = [str(j) for j in size_list]
+            y_data = np.log([turn[size][width] for size in turn.keys()])
+            #print(x_data,y_data)
+            plt.plot( x_data, y_data,color=color_dict[width_list[width]],linestyle=line_type)
+        #plt.scatter( x=x_label_list, y=accuracy_after)
+
+    #plt.ylim((0.84,0.97))
+
+    #plt.axhline(flash_size,color="red",label="Storage Constraint")
+    plt.legend(legend_list, loc='upper left')
+    plt.title("(Figure 3.3) MobileNet V2 log-latency with different width multipliers")
+    plt.xlabel("Image Size")
+    plt.ylabel("Model log(latency)")
+    plt.xticks(rotation = 45)
+    plt.savefig(fig_path+"third-3.png") 
+
+    plt.clf()
+
+figure(figsize=(6, 6), dpi=80)
+draw_latency_plot()
+
+assert 1==2
 draw_size_plot_mobilenet()
 
 
